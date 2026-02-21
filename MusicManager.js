@@ -173,7 +173,7 @@ class MusicManager {
                             volume: 80,
                             leaveOnEmpty: true,
                             leaveOnEnd: true,
-                            // Definitve Bridge Bridge (yt-dlp Nuclear Release)
+                            // Definitve Bridge Bridge (Nuclear Extraction V2)
                             onBeforeCreateStream: async (track) => {
                                 try {
                                     if (!track.url || track.url === 'undefined') {
@@ -181,28 +181,45 @@ class MusicManager {
                                         return null;
                                     }
 
-                                    console.log(`[BRIDGE] Extracting direct stream via YouTubei.js for: ${track.url}`);
+                                    console.log(`[BRIDGE] Nuclear Extraction for: ${track.url}`);
 
                                     try {
                                         const videoId = track.url.split('v=')[1]?.split('&')[0];
                                         if (!videoId) throw new Error('Could not parse video ID');
 
-                                        const info = await this.innertube.getBasicInfo(videoId, 'TV_EMBEDDED');
-                                        const format = info.chooseFormat({ type: 'audio', quality: 'best' });
-
-                                        if (format && format.url) {
-                                            console.log('[BRIDGE SUCCESS] YouTubei.js (TV) extracted direct URL');
-                                            return format.url;
+                                        // Ensure YouTubei is initialized
+                                        if (!this.innertube) {
+                                            this.innertube = await Innertube.create().catch(() => null);
                                         }
-                                        throw new Error('YouTubei.js failed to get format URL');
+
+                                        if (this.innertube) {
+                                            // Client Rotation: Try different clients as some are less restricted
+                                            const clients = ['TV_EMBEDDED', 'WEB_REMIX', 'ANDROID_TESTSUITE', 'MWEB'];
+                                            for (const clientName of clients) {
+                                                try {
+                                                    console.log(`[BRIDGE] Attempting ${clientName} client...`);
+                                                    const info = await this.innertube.getBasicInfo(videoId, clientName);
+                                                    const format = info.chooseFormat({ type: 'audio', quality: 'best' });
+                                                    if (format && format.url) {
+                                                        console.log(`[BRIDGE SUCCESS] Extracted via ${clientName}`);
+                                                        return format.url;
+                                                    }
+                                                } catch (clErr) {
+                                                    continue;
+                                                }
+                                            }
+                                        }
+                                        throw new Error('All YouTubei.js clients failed');
 
                                     } catch (tubeErr) {
-                                        console.warn('[BRIDGE FAIL] YouTubei.js failed, falling back to yt-dlp:', tubeErr.message);
+                                        console.warn('[BRIDGE FAIL] YouTubei rotation failed, final attempt via yt-dlp:', tubeErr.message);
 
-                                        // BACKUP: yt-dlp with specific player client arguments
+                                        // FINAL FALLBACK: yt-dlp with advanced bypass args
                                         const isWindows = process.platform === 'win32';
                                         const ytDlpPath = isWindows ? path.join(__dirname, 'yt-dlp.exe') : 'yt-dlp';
-                                        const extractorArgs = '--extractor-args "youtube:player_client=android,web"';
+
+                                        // Use specific player client arguments to bypass blocks
+                                        const extractorArgs = '--extractor-args "youtube:player_client=android,ios" --no-check-certificates';
 
                                         const command = isWindows
                                             ? `"${ytDlpPath}" ${extractorArgs} -g -f bestaudio "${track.url}"`
@@ -211,14 +228,14 @@ class MusicManager {
                                         const directUrl = execSync(command).toString().trim();
 
                                         if (directUrl && directUrl.startsWith('http')) {
-                                            console.log('[BRIDGE SUCCESS] yt-dlp fallback extracted direct URL');
+                                            console.log('[BRIDGE SUCCESS] yt-dlp final bypass worked');
                                             return directUrl;
                                         }
-                                        throw new Error('All extraction methods failed');
+                                        throw new Error('All extraction methods blocked by YouTube');
                                     }
                                 } catch (e) {
                                     console.error('[BRIDGE FAIL FINAL]', e.message);
-                                    // Fallback to play-dl just in case, though it's likely blocked
+                                    // Fallback to play-dl as last resort
                                     try {
                                         const stream = await play.stream(track.url, { discordPlayerCompatibility: true });
                                         return stream.stream;
