@@ -22,10 +22,17 @@ class MusicManager {
      */
     async init() {
         try {
-            await this.player.extractors.loadMulti(DefaultExtractors);
+            if (this.player.extractors.size === 0) {
+                await this.player.extractors.loadMulti(DefaultExtractors);
+            }
 
             // Initialize YouTubei.js for resilient streaming
-            this.innertube = await Innertube.create();
+            if (!this.innertube) {
+                this.innertube = await Innertube.create().catch(e => {
+                    console.warn('[INFO] YouTubei.js initial connection failed, will retry during playback:', e.message);
+                    return null;
+                });
+            }
 
             console.log('✅ Music engine initialized (V16-MASTER-BRIDGE)');
         } catch (err) {
