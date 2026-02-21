@@ -174,31 +174,42 @@ class MusicManager {
                                         return null;
                                     }
 
-                                    console.log(`[BRIDGE] Extracting direct stream via yt-dlp for: ${track.url}`);
+                                    console.log(`[BRIDGE] Extracting direct stream via YouTubei.js for: ${track.url}`);
 
-                                    // CROSS-PLATFORM BRIDGE: Use yt-dlp.exe on Windows, yt-dlp on Linux
-                                    const isWindows = process.platform === 'win32';
-                                    const ytDlpPath = isWindows ? path.join(__dirname, 'yt-dlp.exe') : 'yt-dlp';
+                                    try {
+                                        const videoId = track.url.split('v=')[1]?.split('&')[0];
+                                        if (!videoId) throw new Error('Could not parse video ID');
 
-                                    // Use specific player client arguments to bypass "Precondition check failed" and HTTP 400 errors
-                                    // This tells YouTube the request is coming from an Android/Web client which is often less restricted
-                                    const extractorArgs = '--extractor-args "youtube:player_client=android,web"';
-                                    const command = isWindows
-                                        ? `"${ytDlpPath}" ${extractorArgs} -g -f bestaudio "${track.url}"`
-                                        : `yt-dlp ${extractorArgs} -g -f bestaudio "${track.url}"`;
+                                        const info = await this.innertube.getBasicInfo(videoId);
+                                        const format = info.chooseFormat({ type: 'audio', quality: 'best' });
 
-                                    const directUrl = execSync(command).toString().trim();
+                                        if (format && format.decipher(this.innertube.session.player)) {
+                                            const directUrl = format.url;
+                                            console.log('[BRIDGE SUCCESS] YouTubei.js extracted direct URL');
+                                            return directUrl;
+                                        }
+                                        throw new Error('YouTubei.js failed to decipher format');
 
-                                    if (!directUrl || !directUrl.startsWith('http')) {
-                                        throw new Error('yt-dlp failed to return a valid URL');
+                                    } catch (tubeErr) {
+                                        console.warn('[BRIDGE FAIL] YouTubei.js failed, falling back to yt-dlp:', tubeErr.message);
+
+                                        // BACKUP: yt-dlp with specific player client arguments
+                                        const isWindows = process.platform === 'win32';
+                                        const ytDlpPath = isWindows ? path.join(__dirname, 'yt-dlp.exe') : 'yt-dlp';
+                                        const extractorArgs = '--extractor-args "youtube:player_client=android,web"';
+
+                                        const command = isWindows
+                                            ? `"${ytDlpPath}" ${extractorArgs} -g -f bestaudio "${track.url}"`
+                                            : `yt-dlp ${extractorArgs} -g -f bestaudio "${track.url}"`;
+
+                                        const directUrl = execSync(command).toString().trim();
+
+                                        if (directUrl && directUrl.startsWith('http')) {
+                                            console.log('[BRIDGE SUCCESS] yt-dlp fallback extracted direct URL');
+                                            return directUrl;
+                                        }
+                                        throw new Error('All extraction methods failed');
                                     }
-
-                                    console.log('[BRIDGE SUCCESS] yt-dlp extracted direct URL');
-
-                                    // Return the direct URL to the player
-                                    // discord-player's onBeforeCreateStream can return a string (URL) 
-                                    // which it will then wrap in a stream automatically.
-                                    return directUrl;
                                 } catch (e) {
                                     console.error('[BRIDGE FAIL FINAL]', e.message);
                                     // Fallback to play-dl just in case, though it's likely blocked
