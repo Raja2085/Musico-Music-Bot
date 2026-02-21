@@ -28,7 +28,10 @@ class MusicManager {
 
             // Initialize YouTubei.js for resilient streaming
             if (!this.innertube) {
-                this.innertube = await Innertube.create().catch(e => {
+                const cookie = process.env.YOUTUBE_COOKIE || '';
+                if (cookie) console.log('[INFO] Using YouTube Cookies for authenticated extraction');
+
+                this.innertube = await Innertube.create({ cookie }).catch(e => {
                     console.warn('[INFO] YouTubei.js initial connection failed, will retry during playback:', e.message);
                     return null;
                 });
@@ -173,7 +176,7 @@ class MusicManager {
                             volume: 80,
                             leaveOnEmpty: true,
                             leaveOnEnd: true,
-                            // Definitve Bridge Bridge (Nuclear Extraction V2)
+                            // Definitve Bridge Bridge (Nuclear Extraction V3 - Authenticated)
                             onBeforeCreateStream: async (track) => {
                                 try {
                                     if (!track.url || track.url === 'undefined') {
@@ -182,6 +185,7 @@ class MusicManager {
                                     }
 
                                     console.log(`[BRIDGE] Nuclear Extraction for: ${track.url}`);
+                                    const cookie = process.env.YOUTUBE_COOKIE || '';
 
                                     try {
                                         const videoId = track.url.split('v=')[1]?.split('&')[0];
@@ -189,12 +193,13 @@ class MusicManager {
 
                                         // Ensure YouTubei is initialized
                                         if (!this.innertube) {
-                                            this.innertube = await Innertube.create().catch(() => null);
+                                            this.innertube = await Innertube.create({ cookie }).catch(() => null);
                                         }
 
                                         if (this.innertube) {
                                             // Client Rotation: Try different clients as some are less restricted
-                                            const clients = ['TV_EMBEDDED', 'WEB_REMIX', 'ANDROID_TESTSUITE', 'MWEB'];
+                                            // Authenticated sessions work best with WEB and ANDROID
+                                            const clients = ['WEB', 'ANDROID', 'TV_EMBEDDED', 'WEB_REMIX', 'MWEB'];
                                             for (const clientName of clients) {
                                                 try {
                                                     console.log(`[BRIDGE] Attempting ${clientName} client...`);
@@ -218,8 +223,11 @@ class MusicManager {
                                         const isWindows = process.platform === 'win32';
                                         const ytDlpPath = isWindows ? path.join(__dirname, 'yt-dlp.exe') : 'yt-dlp';
 
-                                        // Use specific player client arguments to bypass blocks
-                                        const extractorArgs = '--extractor-args "youtube:player_client=android,ios" --no-check-certificates';
+                                        // Cookie support for yt-dlp via header
+                                        let extractorArgs = '--extractor-args "youtube:player_client=android,ios" --no-check-certificates';
+                                        if (cookie) {
+                                            extractorArgs += ` --add-header "Cookie: ${cookie}"`;
+                                        }
 
                                         const command = isWindows
                                             ? `"${ytDlpPath}" ${extractorArgs} -g -f bestaudio "${track.url}"`
@@ -237,6 +245,7 @@ class MusicManager {
                                     console.error('[BRIDGE FAIL FINAL]', e.message);
                                     // Fallback to play-dl as last resort
                                     try {
+                                        // Try to inject cookie into play-dl if possible (requires more complex setup, so we skip for now)
                                         const stream = await play.stream(track.url, { discordPlayerCompatibility: true });
                                         return stream.stream;
                                     } catch (innerErr) {
