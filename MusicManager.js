@@ -155,29 +155,39 @@ class MusicManager {
                             volume: 80,
                             leaveOnEmpty: true,
                             leaveOnEnd: true,
-                            // CROSS-PLATFORM BRIDGE: optimized for local terminal use
+                            // ENHANCED LOCAL BRIDGE
                             onBeforeCreateStream: async (track) => {
                                 try {
-                                    if (!track.url || track.url === 'undefined') return null;
+                                    if (!track.url || track.url === 'undefined') {
+                                        console.error('[BRIDGE] Invalid track URL');
+                                        return null;
+                                    }
 
-                                    console.log(`[BRIDGE] Extracting stream via yt-dlp...`);
+                                    console.log(`[BRIDGE] Extracting local stream for: ${track.url}`);
 
                                     const isWindows = process.platform === 'win32';
                                     const ytDlpPath = isWindows ? path.join(__dirname, 'yt-dlp.exe') : 'yt-dlp';
-                                    const command = isWindows
-                                        ? `"${ytDlpPath}" -g -f bestaudio "${track.url}"`
-                                        : `yt-dlp -g -f bestaudio "${track.url}"`;
 
-                                    const directUrl = execSync(command).toString().trim();
-                                    return directUrl;
-                                } catch (e) {
-                                    console.warn('[BRIDGE FAIL] Falling back to play-dl:', e.message);
+                                    // Robust command construction
+                                    const command = isWindows
+                                        ? `"${ytDlpPath}" -g -f "bestaudio[ext=m4a]/bestaudio" --no-warnings "${track.url}"`
+                                        : `yt-dlp -g -f "bestaudio[ext=m4a]/bestaudio" --no-warnings "${track.url}"`;
+
                                     try {
+                                        const directUrl = execSync(command, { encoding: 'utf8' }).trim();
+                                        if (directUrl && directUrl.startsWith('http')) {
+                                            console.log('[BRIDGE SUCCESS] URL Extracted successfully');
+                                            return directUrl;
+                                        }
+                                        throw new Error('yt-dlp returned invalid URL');
+                                    } catch (execErr) {
+                                        console.warn('[BRIDGE] yt-dlp failed, trying play-dl fallback:', execErr.message);
                                         const stream = await play.stream(track.url, { discordPlayerCompatibility: true });
                                         return stream.stream;
-                                    } catch (innerErr) {
-                                        return null;
                                     }
+                                } catch (e) {
+                                    console.error('[BRIDGE FINAL FAIL]', e.message);
+                                    return null;
                                 }
                             }
                         }
