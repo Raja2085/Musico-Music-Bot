@@ -23,7 +23,7 @@ class MusicManager {
             if (this.player.extractors.size === 0) {
                 await this.player.extractors.loadMulti(DefaultExtractors);
             }
-            console.log('✅ Music engine initialized (V16-LOCAL-VERBOSE)');
+            console.log('✅ Music engine initialized');
         } catch (err) {
             console.error('❌ Error loading extractors:', err);
         }
@@ -45,7 +45,6 @@ class MusicManager {
         });
 
         this.player.events.on('audioTrackAdd', (queue, track) => {
-            console.log(`[QUEUE] Added track: ${track.title}`);
             const embed = new EmbedBuilder()
                 .setTitle('✅ Song Added')
                 .setDescription(`**${track.title}**`)
@@ -54,21 +53,16 @@ class MusicManager {
         });
 
         this.player.events.on('emptyQueue', (queue) => {
-            console.log('[QUEUE] Queue is empty');
             queue.metadata.send('👋 Queue empty, leaving the channel.').catch(() => { });
         });
 
         this.player.events.on('playerError', (queue, error) => {
-            console.error(`🔥 [PLAYER ERROR] ${error.stack || error.message}`);
+            console.error(`[PLAYER ERROR] ${error.message}`);
             queue.metadata.send(`⚠️ **Playback Issue**: ${error.message}.`).catch(() => { });
         });
 
         this.player.events.on('error', (queue, error) => {
-            console.error(`🔥 [GENERAL ERROR] ${error.stack || error.message}`);
-        });
-
-        this.player.events.on('debug', (queue, message) => {
-            if (message.includes('Error')) console.log(`[PLAYER DEBUG] ${message}`);
+            console.error(`[GENERAL ERROR] ${error.message}`);
         });
     }
 
@@ -79,19 +73,16 @@ class MusicManager {
         if (this.player.extractors.size === 0) await this.init();
 
         try {
-            console.log(`[SEARCH] play-dl query: "${query}"`);
-
             // Search with play-dl (fallback to yt-search if it fails)
             let youtubeResults = [];
             try {
                 youtubeResults = await play.search(query, {
-                    limit: 25,
+                    limit: 15,
                     source: { youtube: 'video' }
                 });
             } catch (searchError) {
-                console.warn('[SEARCH FAIL] Falling back to yt-search:', searchError.message);
                 const fallbackResults = await yts(query);
-                youtubeResults = fallbackResults.videos.slice(0, 25).map(v => ({
+                youtubeResults = fallbackResults.videos.slice(0, 15).map(v => ({
                     title: v.title,
                     url: v.url,
                     link: v.url,
@@ -114,8 +105,8 @@ class MusicManager {
             }));
 
             const selectMenu = new StringSelectMenuBuilder()
-                .setCustomId('music_select_v16_verbose')
-                .setPlaceholder('Choose the correct song...')
+                .setCustomId('music_select_v16')
+                .setPlaceholder('Choose a song...')
                 .addOptions(selectOptions);
 
             const row = new ActionRowBuilder().addComponents(selectMenu);
@@ -141,7 +132,6 @@ class MusicManager {
                 if (!videoUrl) return i.update({ content: `❌ **Error**: Invalid URL.`, components: [] }).catch(() => { });
 
                 try {
-                    console.log(`[INTERACTION] User selected: ${video.title}`);
                     await i.update({ content: `✅ Processing: **${video.title}**`, components: [] }).catch(() => { });
 
                     const videoInfo = await play.video_basic_info(videoUrl).catch(() => null);
@@ -155,11 +145,9 @@ class MusicManager {
                         duration: videoInfo?.video_details?.durationRaw || video.durationRaw,
                         views: videoInfo?.video_details?.views || video.views || 0,
                         requestedBy: interaction.user,
-                        source: 'arbitrary', // Force bridge
-                        queryType: QueryType.AUTO
+                        source: 'youtube',
+                        queryType: QueryType.YOUTUBE_VIDEO
                     });
-
-                    console.log(`[SYSTEM] Starting playback for: ${manualTrack.title}`);
 
                     // Kick off playback
                     await this.player.play(channel, manualTrack, {
@@ -169,55 +157,39 @@ class MusicManager {
                             volume: 100,
                             leaveOnEmpty: true,
                             leaveOnEnd: true,
-                            // EXTREME LOCAL BRIDGE
+                            // OPTIMIZED LOCAL BRIDGE
                             onBeforeCreateStream: async (track) => {
-                                console.log(`[BRIDGE] onBeforeCreateStream triggered for: ${track.url}`);
                                 try {
-                                    if (!track.url || track.url === 'undefined') {
-                                        console.error('[BRIDGE] FATAL: Track URL is null or undefined');
-                                        return null;
-                                    }
+                                    if (!track.url || track.url === 'undefined') return null;
 
                                     const isWindows = process.platform === 'win32';
                                     const ytDlpPath = isWindows ? path.join(process.cwd(), 'yt-dlp.exe') : 'yt-dlp';
 
-                                    console.log(`[BRIDGE] Using yt-dlp path: ${ytDlpPath}`);
-
-                                    // Simpler command for better stability
                                     const command = isWindows
-                                        ? `"${ytDlpPath}" -g -f bestaudio "${track.url}"`
-                                        : `yt-dlp -g -f bestaudio "${track.url}"`;
-
-                                    console.log(`[BRIDGE] Running command: ${command}`);
+                                        ? `"${ytDlpPath}" -g -f "bestaudio[ext=m4a]/bestaudio" --no-warnings "${track.url}"`
+                                        : `yt-dlp -g -f "bestaudio[ext=m4a]/bestaudio" --no-warnings "${track.url}"`;
 
                                     try {
                                         const directUrl = execSync(command, { encoding: 'utf8', timeout: 30000 }).trim();
-
                                         if (directUrl && directUrl.startsWith('http')) {
-                                            console.log(`[BRIDGE SUCCESS] URL length: ${directUrl.length}`);
-                                            // Optional: Log a snippet of the URL for verification
-                                            console.log(`[BRIDGE SUCCESS] URL snippet: ${directUrl.substring(0, 50)}...`);
+                                            console.log(`[BRIDGE] Extracted: ${track.title}`);
                                             return directUrl;
                                         }
-                                        console.error(`[BRIDGE FAIL] yt-dlp returned invalid content: ${directUrl.substring(0, 100)}`);
-                                        throw new Error('yt-dlp parsing failed');
+                                        throw new Error('yt-dlp returned invalid URL');
                                     } catch (execErr) {
-                                        console.error(`[BRIDGE EXEC ERROR] ${execErr.message}`);
-                                        if (execErr.stderr) console.error(`[BRIDGE STDERR] ${execErr.stderr.toString()}`);
-
-                                        console.log('[BRIDGE] Falling back to play-dl directly...');
+                                        console.warn('[BRIDGE] yt-dlp failed, using play-dl fallback:', execErr.message);
                                         const stream = await play.stream(track.url, { discordPlayerCompatibility: true });
                                         return stream.stream;
                                     }
                                 } catch (e) {
-                                    console.error(`🔥 [BRIDGE FATAL ERROR] ${e.stack || e.message}`);
+                                    console.error(`[BRIDGE FAIL] ${e.message}`);
                                     return null;
                                 }
                             }
                         }
                     });
                 } catch (playErr) {
-                    console.error('🔥 [PLAY ACTION ERROR]', playErr.stack || playErr.message);
+                    console.error('[PLAY ERROR]', playErr.message);
                     interaction.channel.send(`❌ **Engine Error**: ${playErr.message}`).catch(() => { });
                 }
             });
@@ -229,7 +201,7 @@ class MusicManager {
             });
 
         } catch (error) {
-            console.error('🔥 [SYSTEM ERROR]', error.stack || error.message);
+            console.error('[SYSTEM ERROR]', error.message);
             await interaction.editReply({ content: `❌ **System Error**: ${error.message}` }).catch(() => { });
         }
     }

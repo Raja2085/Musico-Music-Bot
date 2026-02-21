@@ -9,9 +9,8 @@ try {
     const ffmpegPath = require('ffmpeg-static');
     const ffmpegDir = path.dirname(ffmpegPath);
     process.env.PATH = `${ffmpegDir};${process.env.PATH}`;
-    console.log('✅ FFMPEG found and injected into PATH');
 } catch (e) {
-    console.warn('⚠️ Could not find ffmpeg-static, ensure ffmpeg is in your system PATH');
+    console.warn('⚠️ Could not find ffmpeg-static');
 }
 
 // --- GLOBAL ERROR HANDLERS ---
