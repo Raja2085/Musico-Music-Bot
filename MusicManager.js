@@ -180,15 +180,14 @@ class MusicManager {
                                         const videoId = track.url.split('v=')[1]?.split('&')[0];
                                         if (!videoId) throw new Error('Could not parse video ID');
 
-                                        const info = await this.innertube.getBasicInfo(videoId);
+                                        const info = await this.innertube.getBasicInfo(videoId, 'TV_EMBEDDED');
                                         const format = info.chooseFormat({ type: 'audio', quality: 'best' });
 
-                                        if (format && format.decipher(this.innertube.session.player)) {
-                                            const directUrl = format.url;
-                                            console.log('[BRIDGE SUCCESS] YouTubei.js extracted direct URL');
-                                            return directUrl;
+                                        if (format && format.url) {
+                                            console.log('[BRIDGE SUCCESS] YouTubei.js (TV) extracted direct URL');
+                                            return format.url;
                                         }
-                                        throw new Error('YouTubei.js failed to decipher format');
+                                        throw new Error('YouTubei.js failed to get format URL');
 
                                     } catch (tubeErr) {
                                         console.warn('[BRIDGE FAIL] YouTubei.js failed, falling back to yt-dlp:', tubeErr.message);
