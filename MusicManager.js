@@ -3,6 +3,7 @@ const { DefaultExtractors } = require('@discord-player/extractor');
 const { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ComponentType, MessageFlags } = require('discord.js');
 const play = require('play-dl');
 const yts = require('yt-search');
+const { Innertube } = require('youtubei.js');
 const { execSync } = require('child_process');
 const path = require('path');
 
@@ -10,6 +11,7 @@ class MusicManager {
     constructor(client) {
         this.client = client;
         this.player = new Player(client);
+        this.innertube = null;
 
         // Register Player Events
         this.setupPlayerEvents();
@@ -21,6 +23,10 @@ class MusicManager {
     async init() {
         try {
             await this.player.extractors.loadMulti(DefaultExtractors);
+
+            // Initialize YouTubei.js for resilient streaming
+            this.innertube = await Innertube.create();
+
             console.log('✅ Music engine initialized (V16-MASTER-BRIDGE)');
         } catch (err) {
             console.error('❌ Error loading extractors:', err);
