@@ -170,9 +170,10 @@ class MusicManager {
 
                                     console.log(`[BRIDGE] Extracting direct stream via yt-dlp for: ${track.url}`);
 
-                                    // NUCLEAR EXTRACTION: Use yt-dlp to get the direct URL
-                                    const ytDlpPath = path.join(__dirname, 'yt-dlp.exe');
-                                    const command = `"${ytDlpPath}" -g -f bestaudio "${track.url}"`;
+                                    // CROSS-PLATFORM BRIDGE: Use yt-dlp.exe on Windows, yt-dlp on Linux
+                                    const isWindows = process.platform === 'win32';
+                                    const ytDlpPath = isWindows ? path.join(__dirname, 'yt-dlp.exe') : 'yt-dlp';
+                                    const command = isWindows ? `"${ytDlpPath}" -g -f bestaudio "${track.url}"` : `yt-dlp -g -f bestaudio "${track.url}"`;
 
                                     const directUrl = execSync(command).toString().trim();
 
