@@ -173,7 +173,13 @@ class MusicManager {
                                     // CROSS-PLATFORM BRIDGE: Use yt-dlp.exe on Windows, yt-dlp on Linux
                                     const isWindows = process.platform === 'win32';
                                     const ytDlpPath = isWindows ? path.join(__dirname, 'yt-dlp.exe') : 'yt-dlp';
-                                    const command = isWindows ? `"${ytDlpPath}" -g -f bestaudio "${track.url}"` : `yt-dlp -g -f bestaudio "${track.url}"`;
+
+                                    // Use specific player client arguments to bypass "Precondition check failed" and HTTP 400 errors
+                                    // This tells YouTube the request is coming from an Android/Web client which is often less restricted
+                                    const extractorArgs = '--extractor-args "youtube:player_client=android,web"';
+                                    const command = isWindows
+                                        ? `"${ytDlpPath}" ${extractorArgs} -g -f bestaudio "${track.url}"`
+                                        : `yt-dlp ${extractorArgs} -g -f bestaudio "${track.url}"`;
 
                                     const directUrl = execSync(command).toString().trim();
 
