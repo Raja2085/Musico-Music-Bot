@@ -2,6 +2,25 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, Events, MessageFlags } = require('discord.js');
 const MusicManager = require('./MusicManager');
 const net = require('net');
+const path = require('path');
+
+// --- FFMPEG DYNAMIC PATH ---
+try {
+    const ffmpegPath = require('ffmpeg-static');
+    const ffmpegDir = path.dirname(ffmpegPath);
+    process.env.PATH = `${ffmpegDir};${process.env.PATH}`;
+    console.log('✅ FFMPEG found and injected into PATH');
+} catch (e) {
+    console.warn('⚠️ Could not find ffmpeg-static, ensure ffmpeg is in your system PATH');
+}
+
+// --- GLOBAL ERROR HANDLERS ---
+process.on('uncaughtException', (err) => {
+    console.error('🔥 [UNCAUGHT EXCEPTION]', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('🔥 [UNHANDLED REJECTION]', reason);
+});
 
 // --- SINGLE INSTANCE LOCK ---
 const LOCK_PORT = 9999;
