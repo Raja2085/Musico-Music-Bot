@@ -3,7 +3,6 @@ const { DefaultExtractors } = require('@discord-player/extractor');
 const { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ComponentType, MessageFlags } = require('discord.js');
 const play = require('play-dl');
 const yts = require('yt-search');
-const { Innertube } = require('youtubei.js');
 const { execSync } = require('child_process');
 const path = require('path');
 
@@ -11,33 +10,20 @@ class MusicManager {
     constructor(client) {
         this.client = client;
         this.player = new Player(client);
-        this.innertube = null;
 
         // Register Player Events
         this.setupPlayerEvents();
     }
 
     /**
-     * Initialize extractors (V16 Master Bridge)
+     * Initialize extractors
      */
     async init() {
         try {
             if (this.player.extractors.size === 0) {
                 await this.player.extractors.loadMulti(DefaultExtractors);
             }
-
-            // Initialize YouTubei.js for resilient streaming
-            if (!this.innertube) {
-                const cookie = process.env.YOUTUBE_COOKIE || '';
-                if (cookie) console.log('[INFO] Using YouTube Cookies for authenticated extraction');
-
-                this.innertube = await Innertube.create({ cookie }).catch(e => {
-                    console.warn('[INFO] YouTubei.js initial connection failed, will retry during playback:', e.message);
-                    return null;
-                });
-            }
-
-            console.log('✅ Music engine initialized (V16-MASTER-BRIDGE)');
+            console.log('✅ Music engine initialized (LOCAL-BRIDGE)');
         } catch (err) {
             console.error('❌ Error loading extractors:', err);
         }
@@ -84,7 +70,7 @@ class MusicManager {
         try {
             console.log(`[SEARCH] play-dl query: "${query}"`);
 
-            // Search with play-dl (Very reliable, until it breaks)
+            // Search with play-dl (fallback to yt-search if it fails)
             let youtubeResults = [];
             try {
                 youtubeResults = await play.search(query, {
@@ -92,7 +78,7 @@ class MusicManager {
                     source: { youtube: 'video' }
                 });
             } catch (searchError) {
-                console.warn('[SEARCH FAIL] play-dl search failed, falling back to yt-search:', searchError.message);
+                console.warn('[SEARCH FAIL] Falling back to yt-search:', searchError.message);
                 const fallbackResults = await yts(query);
                 youtubeResults = fallbackResults.videos.slice(0, 25).map(v => ({
                     title: v.title,
@@ -118,7 +104,7 @@ class MusicManager {
 
             const selectMenu = new StringSelectMenuBuilder()
                 .setCustomId('music_select_v16')
-                .setPlaceholder('Choose the correct song (top 25 results)...')
+                .setPlaceholder('Choose the correct song...')
                 .addOptions(selectOptions);
 
             const row = new ActionRowBuilder().addComponents(selectMenu);
@@ -141,19 +127,12 @@ class MusicManager {
                 const video = youtubeResults[parseInt(i.values[0])];
                 const videoUrl = video.url || video.link;
 
-                if (!videoUrl) {
-                    console.error('[CRITICAL] No URL found for selected video:', video);
-                    return i.update({ content: `❌ **Error**: Could not find a valid URL for this track.`, components: [] }).catch(() => { });
-                }
+                if (!videoUrl) return i.update({ content: `❌ **Error**: Invalid URL.`, components: [] }).catch(() => { });
 
                 try {
                     await i.update({ content: `✅ Processing: **${video.title}**`, components: [] }).catch(() => { });
 
-                    // --- V16 MASTER BRIDGE: Manual Track injection ---
-                    const videoInfo = await play.video_basic_info(videoUrl).catch((err) => {
-                        console.warn('[INFO FAIL] video_basic_info failed, using search data:', err.message);
-                        return null;
-                    });
+                    const videoInfo = await play.video_basic_info(videoUrl).catch(() => null);
 
                     const manualTrack = new Track(this.player, {
                         title: videoInfo?.video_details?.title || video.title,
@@ -168,7 +147,7 @@ class MusicManager {
                         queryType: QueryType.YOUTUBE_VIDEO
                     });
 
-                    // Kick off playback using the manually created track
+                    // Kick off playback
                     await this.player.play(channel, manualTrack, {
                         nodeOptions: {
                             metadata: interaction.channel,
@@ -176,76 +155,24 @@ class MusicManager {
                             volume: 80,
                             leaveOnEmpty: true,
                             leaveOnEnd: true,
-                            // Definitve Bridge Bridge (Nuclear Extraction V3 - Authenticated)
+                            // CROSS-PLATFORM BRIDGE: optimized for local terminal use
                             onBeforeCreateStream: async (track) => {
                                 try {
-                                    if (!track.url || track.url === 'undefined') {
-                                        console.error('[BRIDGE FAIL] track.url is invalid:', track.url);
-                                        return null;
-                                    }
+                                    if (!track.url || track.url === 'undefined') return null;
 
-                                    console.log(`[BRIDGE] Nuclear Extraction for: ${track.url}`);
-                                    const cookie = process.env.YOUTUBE_COOKIE || '';
+                                    console.log(`[BRIDGE] Extracting stream via yt-dlp...`);
 
-                                    try {
-                                        const videoId = track.url.split('v=')[1]?.split('&')[0];
-                                        if (!videoId) throw new Error('Could not parse video ID');
+                                    const isWindows = process.platform === 'win32';
+                                    const ytDlpPath = isWindows ? path.join(__dirname, 'yt-dlp.exe') : 'yt-dlp';
+                                    const command = isWindows
+                                        ? `"${ytDlpPath}" -g -f bestaudio "${track.url}"`
+                                        : `yt-dlp -g -f bestaudio "${track.url}"`;
 
-                                        // Ensure YouTubei is initialized
-                                        if (!this.innertube) {
-                                            this.innertube = await Innertube.create({ cookie }).catch(() => null);
-                                        }
-
-                                        if (this.innertube) {
-                                            // Client Rotation: Try different clients as some are less restricted
-                                            // Authenticated sessions work best with WEB and ANDROID
-                                            const clients = ['WEB', 'ANDROID', 'TV_EMBEDDED', 'WEB_REMIX', 'MWEB'];
-                                            for (const clientName of clients) {
-                                                try {
-                                                    console.log(`[BRIDGE] Attempting ${clientName} client...`);
-                                                    const info = await this.innertube.getBasicInfo(videoId, clientName);
-                                                    const format = info.chooseFormat({ type: 'audio', quality: 'best' });
-                                                    if (format && format.url) {
-                                                        console.log(`[BRIDGE SUCCESS] Extracted via ${clientName}`);
-                                                        return format.url;
-                                                    }
-                                                } catch (clErr) {
-                                                    continue;
-                                                }
-                                            }
-                                        }
-                                        throw new Error('All YouTubei.js clients failed');
-
-                                    } catch (tubeErr) {
-                                        console.warn('[BRIDGE FAIL] YouTubei rotation failed, final attempt via yt-dlp:', tubeErr.message);
-
-                                        // FINAL FALLBACK: yt-dlp with advanced bypass args
-                                        const isWindows = process.platform === 'win32';
-                                        const ytDlpPath = isWindows ? path.join(__dirname, 'yt-dlp.exe') : 'yt-dlp';
-
-                                        // Cookie support for yt-dlp via header
-                                        let extractorArgs = '--extractor-args "youtube:player_client=android,ios" --no-check-certificates';
-                                        if (cookie) {
-                                            extractorArgs += ` --add-header "Cookie: ${cookie}"`;
-                                        }
-
-                                        const command = isWindows
-                                            ? `"${ytDlpPath}" ${extractorArgs} -g -f bestaudio "${track.url}"`
-                                            : `yt-dlp ${extractorArgs} -g -f bestaudio "${track.url}"`;
-
-                                        const directUrl = execSync(command).toString().trim();
-
-                                        if (directUrl && directUrl.startsWith('http')) {
-                                            console.log('[BRIDGE SUCCESS] yt-dlp final bypass worked');
-                                            return directUrl;
-                                        }
-                                        throw new Error('All extraction methods blocked by YouTube');
-                                    }
+                                    const directUrl = execSync(command).toString().trim();
+                                    return directUrl;
                                 } catch (e) {
-                                    console.error('[BRIDGE FAIL FINAL]', e.message);
-                                    // Fallback to play-dl as last resort
+                                    console.warn('[BRIDGE FAIL] Falling back to play-dl:', e.message);
                                     try {
-                                        // Try to inject cookie into play-dl if possible (requires more complex setup, so we skip for now)
                                         const stream = await play.stream(track.url, { discordPlayerCompatibility: true });
                                         return stream.stream;
                                     } catch (innerErr) {
