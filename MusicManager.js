@@ -23,7 +23,7 @@ class MusicManager {
             if (this.player.extractors.size === 0) {
                 await this.player.extractors.loadMulti(DefaultExtractors);
             }
-            console.log('✅ Music engine initialized (V16-LOCAL-FINAL)');
+            console.log('✅ Music engine initialized (V16-LOCAL-VERBOSE)');
         } catch (err) {
             console.error('❌ Error loading extractors:', err);
         }
@@ -65,6 +65,10 @@ class MusicManager {
 
         this.player.events.on('error', (queue, error) => {
             console.error(`🔥 [GENERAL ERROR] ${error.stack || error.message}`);
+        });
+
+        this.player.events.on('debug', (queue, message) => {
+            if (message.includes('Error')) console.log(`[PLAYER DEBUG] ${message}`);
         });
     }
 
@@ -110,7 +114,7 @@ class MusicManager {
             }));
 
             const selectMenu = new StringSelectMenuBuilder()
-                .setCustomId('music_select_v16')
+                .setCustomId('music_select_v16_verbose')
                 .setPlaceholder('Choose the correct song...')
                 .addOptions(selectOptions);
 
@@ -137,6 +141,7 @@ class MusicManager {
                 if (!videoUrl) return i.update({ content: `❌ **Error**: Invalid URL.`, components: [] }).catch(() => { });
 
                 try {
+                    console.log(`[INTERACTION] User selected: ${video.title}`);
                     await i.update({ content: `✅ Processing: **${video.title}**`, components: [] }).catch(() => { });
 
                     const videoInfo = await play.video_basic_info(videoUrl).catch(() => null);
@@ -150,8 +155,8 @@ class MusicManager {
                         duration: videoInfo?.video_details?.durationRaw || video.durationRaw,
                         views: videoInfo?.video_details?.views || video.views || 0,
                         requestedBy: interaction.user,
-                        source: 'youtube', // Back to youtube
-                        queryType: QueryType.YOUTUBE_VIDEO
+                        source: 'arbitrary', // Force bridge
+                        queryType: QueryType.AUTO
                     });
 
                     console.log(`[SYSTEM] Starting playback for: ${manualTrack.title}`);
@@ -161,43 +166,58 @@ class MusicManager {
                         nodeOptions: {
                             metadata: interaction.channel,
                             selfDeaf: true,
-                            volume: 80,
+                            volume: 100,
                             leaveOnEmpty: true,
                             leaveOnEnd: true,
-                            // ENHANCED LOCAL BRIDGE
+                            // EXTREME LOCAL BRIDGE
                             onBeforeCreateStream: async (track) => {
-                                console.log(`[BRIDGE TRIGGERED] Extracting stream for: ${track.url}`);
+                                console.log(`[BRIDGE] onBeforeCreateStream triggered for: ${track.url}`);
                                 try {
-                                    if (!track.url || track.url === 'undefined') return null;
-
-                                    const isWindows = process.platform === 'win32';
-                                    const ytDlpPath = isWindows ? path.join(__dirname, 'yt-dlp.exe') : 'yt-dlp';
-                                    const command = isWindows
-                                        ? `"${ytDlpPath}" -g -f "bestaudio[ext=m4a]/bestaudio" --no-warnings "${track.url}"`
-                                        : `yt-dlp -g -f "bestaudio[ext=m4a]/bestaudio" --no-warnings "${track.url}"`;
-
-                                    const directUrl = execSync(command, { encoding: 'utf8' }).trim();
-
-                                    if (directUrl && directUrl.startsWith('http')) {
-                                        console.log('[BRIDGE SUCCESS] URL Extracted');
-                                        return directUrl;
-                                    }
-                                    throw new Error('yt-dlp parsing failed');
-                                } catch (e) {
-                                    console.warn('[BRIDGE] yt-dlp failed, using play-dl fallback:', e.message);
-                                    try {
-                                        const stream = await play.stream(track.url, { discordPlayerCompatibility: true });
-                                        return stream.stream;
-                                    } catch (innerErr) {
-                                        console.error('[BRIDGE FINAL FAIL]', innerErr.message);
+                                    if (!track.url || track.url === 'undefined') {
+                                        console.error('[BRIDGE] FATAL: Track URL is null or undefined');
                                         return null;
                                     }
+
+                                    const isWindows = process.platform === 'win32';
+                                    const ytDlpPath = isWindows ? path.join(process.cwd(), 'yt-dlp.exe') : 'yt-dlp';
+
+                                    console.log(`[BRIDGE] Using yt-dlp path: ${ytDlpPath}`);
+
+                                    // Simpler command for better stability
+                                    const command = isWindows
+                                        ? `"${ytDlpPath}" -g -f bestaudio "${track.url}"`
+                                        : `yt-dlp -g -f bestaudio "${track.url}"`;
+
+                                    console.log(`[BRIDGE] Running command: ${command}`);
+
+                                    try {
+                                        const directUrl = execSync(command, { encoding: 'utf8', timeout: 30000 }).trim();
+
+                                        if (directUrl && directUrl.startsWith('http')) {
+                                            console.log(`[BRIDGE SUCCESS] URL length: ${directUrl.length}`);
+                                            // Optional: Log a snippet of the URL for verification
+                                            console.log(`[BRIDGE SUCCESS] URL snippet: ${directUrl.substring(0, 50)}...`);
+                                            return directUrl;
+                                        }
+                                        console.error(`[BRIDGE FAIL] yt-dlp returned invalid content: ${directUrl.substring(0, 100)}`);
+                                        throw new Error('yt-dlp parsing failed');
+                                    } catch (execErr) {
+                                        console.error(`[BRIDGE EXEC ERROR] ${execErr.message}`);
+                                        if (execErr.stderr) console.error(`[BRIDGE STDERR] ${execErr.stderr.toString()}`);
+
+                                        console.log('[BRIDGE] Falling back to play-dl directly...');
+                                        const stream = await play.stream(track.url, { discordPlayerCompatibility: true });
+                                        return stream.stream;
+                                    }
+                                } catch (e) {
+                                    console.error(`🔥 [BRIDGE FATAL ERROR] ${e.stack || e.message}`);
+                                    return null;
                                 }
                             }
                         }
                     });
                 } catch (playErr) {
-                    console.error('🔥 [PLAY ACTION ERROR]', playErr);
+                    console.error('🔥 [PLAY ACTION ERROR]', playErr.stack || playErr.message);
                     interaction.channel.send(`❌ **Engine Error**: ${playErr.message}`).catch(() => { });
                 }
             });
@@ -209,7 +229,7 @@ class MusicManager {
             });
 
         } catch (error) {
-            console.error('🔥 [SYSTEM ERROR]', error);
+            console.error('🔥 [SYSTEM ERROR]', error.stack || error.message);
             await interaction.editReply({ content: `❌ **System Error**: ${error.message}` }).catch(() => { });
         }
     }
