@@ -143,9 +143,11 @@ class MusicManager {
                         duration: videoInfo?.video_details?.durationRaw || video.durationRaw,
                         views: videoInfo?.video_details?.views || video.views || 0,
                         requestedBy: interaction.user,
-                        source: 'youtube',
-                        queryType: QueryType.YOUTUBE_VIDEO
+                        source: 'arbitrary', // Use arbitrary to force onBeforeCreateStream
+                        queryType: QueryType.AUTO
                     });
+
+                    console.log(`[SYSTEM] Starting playback for: ${manualTrack.title}`);
 
                     // Kick off playback
                     await this.player.play(channel, manualTrack, {
@@ -157,6 +159,7 @@ class MusicManager {
                             leaveOnEnd: true,
                             // ENHANCED LOCAL BRIDGE
                             onBeforeCreateStream: async (track) => {
+                                console.log(`[BRIDGE TRIGGERED] Path: local, URL: ${track.url}`);
                                 try {
                                     if (!track.url || track.url === 'undefined') {
                                         console.error('[BRIDGE] Invalid track URL');
