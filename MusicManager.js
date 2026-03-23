@@ -135,13 +135,16 @@ class MusicManager {
             });
 
             collector.on('collect', async i => {
-                const video = youtubeResults[parseInt(i.values[0])];
-                const videoUrl = video.url || video.link;
-
-                if (!videoUrl) return i.update({ content: `❌ **Error**: Invalid URL.`, components: [] }).catch(() => { });
-
                 try {
-                    await i.update({ content: `✅ Processing: **${video.title}**`, components: [] }).catch(() => { });
+                    // IMMEDIATELY defer to prevent "Interaction failed" on slow networks
+                    await i.deferUpdate().catch(() => { });
+
+                    const video = youtubeResults[parseInt(i.values[0])];
+                    const videoUrl = video.url || video.link;
+
+                    if (!videoUrl) return interaction.editReply({ content: `❌ **Error**: Invalid URL.`, components: [] }).catch(() => { });
+
+                    await interaction.editReply({ content: `✅ Processing: **${video.title}**`, components: [] }).catch(() => { });
 
                     const videoInfo = await play.video_basic_info(videoUrl).catch(() => null);
 
