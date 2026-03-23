@@ -8,7 +8,7 @@ const path = require('path');
 try {
     const ffmpegPath = require('ffmpeg-static');
     const ffmpegDir = path.dirname(ffmpegPath);
-    process.env.PATH = `${ffmpegDir};${process.env.PATH}`;
+    process.env.PATH = `${ffmpegDir}${path.delimiter}${process.env.PATH}`;
 } catch (e) {
     console.warn('⚠️ Could not find ffmpeg-static');
 }

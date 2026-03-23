@@ -1,0 +1,8 @@
+modules = ["nodejs-20", "nixpkgs-unstable"]
+run = "npm start"
+
+[nix]
+channel = "stable-24_05"
+
+[deployment]
+run = "npm start"
