@@ -190,37 +190,29 @@ class MusicManager {
 
                                     const isWindows = process.platform === 'win32';
                                     
-                                    // On Local Windows, force a direct ReadableStream for maximum reliability
+                                    // On Local Windows, use a direct yt-dlp pipe for maximum reliability
                                     if (isWindows) {
                                         try {
-                                            // Ensure URL is clean
                                             const cleanUrl = track.url.split('&')[0]; 
-                                            console.log(`[LOCAL] Attempting direct stream: ${track.title}`);
+                                            console.log(`[LOCAL] Piping yt-dlp: ${track.title}`);
                                             
-                                            // Use play-dl with forced compatibility
-                                            const streamData = await play.stream(cleanUrl, { 
-                                                discordPlayerCompatibility: true,
-                                                quality: 1,
-                                                seek: 0
-                                            }).catch(() => null);
-
-                                            if (streamData && streamData.stream) {
-                                                console.log(`[LOCAL] Stream started: ${track.title}`);
-                                                return streamData.stream;
-                                            }
-
-                                            // Fallback to yt-dlp pipe if play-dl fails
                                             const ytDlpPath = path.join(process.cwd(), 'yt-dlp.exe');
-                                            const command = `"${ytDlpPath}" -g -f "bestaudio[ext=m4a]/bestaudio" --no-warnings "${cleanUrl}"`;
-                                            const directUrl = execSync(command, { encoding: 'utf8' }).trim();
+                                            const { spawn } = require('child_process');
                                             
-                                            if (directUrl && directUrl.startsWith('http')) {
-                                                console.log(`[LOCAL] yt-dlp extracted URL: ${track.title}`);
-                                                const finalStream = await play.stream(directUrl, { discordPlayerCompatibility: true });
-                                                return finalStream.stream;
-                                            }
+                                            // Spawn yt-dlp and extract audio to stdout (-)
+                                            const ytProcess = spawn(ytDlpPath, [
+                                                '-o', '-', 
+                                                '-q', 
+                                                '--no-warnings', 
+                                                '--no-playlist',
+                                                '-f', 'bestaudio[ext=m4a]/bestaudio', 
+                                                cleanUrl
+                                            ]);
+
+                                            // Return the stdout stream directly
+                                            return ytProcess.stdout;
                                         } catch (e) {
-                                            console.warn('[LOCAL BRIDGE FAIL]', e.message);
+                                            console.warn('[LOCAL PIPE FAIL]', e.message);
                                         }
                                     }
 
