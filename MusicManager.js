@@ -13,6 +13,9 @@ class MusicManager {
 
         // Register Player Events
         this.setupPlayerEvents();
+
+        // Pre-load extractors for faster performance
+        this.init();
     }
 
     /**
@@ -70,14 +73,15 @@ class MusicManager {
         const channel = interaction.member.voice.channel;
         if (!channel) return interaction.editReply({ content: '❌ You must be in a voice channel!' }).catch(() => { });
 
-        if (this.player.extractors.size === 0) await this.init();
 
         try {
+            await interaction.editReply({ content: `🔍 Searching for **"${query}"**...` }).catch(() => { });
+
             // Search with yt-search first (more stable on Replit IPs)
             let youtubeResults = [];
             try {
                 const searchRes = await yts(query);
-                youtubeResults = searchRes.videos.slice(0, 15).map(v => ({
+                youtubeResults = searchRes.videos.slice(0, 10).map(v => ({
                     title: v.title,
                     url: v.url,
                     link: v.url,
