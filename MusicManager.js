@@ -190,37 +190,47 @@ class MusicManager {
 
                                     const isWindows = process.platform === 'win32';
                                     
-                                    // On Local Windows, use play-dl directly for more stability
+                                    // On Local Windows, force a direct ReadableStream for maximum reliability
                                     if (isWindows) {
                                         try {
-                                            const streamData = await play.stream(track.url, { 
+                                            // Ensure URL is clean
+                                            const cleanUrl = track.url.split('&')[0]; 
+                                            console.log(`[LOCAL] Attempting direct stream: ${track.title}`);
+                                            
+                                            // Use play-dl with forced compatibility
+                                            const streamData = await play.stream(cleanUrl, { 
                                                 discordPlayerCompatibility: true,
-                                                quality: 1
-                                            });
-                                            console.log(`[LOCAL] Streamed via play-dl: ${track.title}`);
-                                            return streamData.stream;
-                                        } catch (streamErr) {
-                                            console.warn('[LOCAL FAIL] play-dl stream failed, using yt-dlp fallback:', streamErr.message);
+                                                quality: 1,
+                                                seek: 0
+                                            }).catch(() => null);
+
+                                            if (streamData && streamData.stream) {
+                                                console.log(`[LOCAL] Stream started: ${track.title}`);
+                                                return streamData.stream;
+                                            }
+
+                                            // Fallback to yt-dlp pipe if play-dl fails
+                                            const ytDlpPath = path.join(process.cwd(), 'yt-dlp.exe');
+                                            const command = `"${ytDlpPath}" -g -f "bestaudio[ext=m4a]/bestaudio" --no-warnings "${cleanUrl}"`;
+                                            const directUrl = execSync(command, { encoding: 'utf8' }).trim();
+                                            
+                                            if (directUrl && directUrl.startsWith('http')) {
+                                                console.log(`[LOCAL] yt-dlp extracted URL: ${track.title}`);
+                                                const finalStream = await play.stream(directUrl, { discordPlayerCompatibility: true });
+                                                return finalStream.stream;
+                                            }
+                                        } catch (e) {
+                                            console.warn('[LOCAL BRIDGE FAIL]', e.message);
                                         }
                                     }
 
-                                    const ytDlpPath = isWindows ? path.join(process.cwd(), 'yt-dlp.exe') : 'yt-dlp';
-
-                                    const command = isWindows
-                                        ? `"${ytDlpPath}" -g -f "bestaudio[ext=m4a]/bestaudio" --no-warnings "${track.url}"`
-                                        : `yt-dlp -g -f "bestaudio[ext=m4a]/bestaudio" --no-warnings "${track.url}"`;
-
+                                    // Fallback for Replit (Linux)
                                     try {
-                                        const directUrl = execSync(command, { encoding: 'utf8', timeout: 30000 }).trim();
-                                        if (directUrl && directUrl.startsWith('http')) {
-                                            console.log(`[BRIDGE] Extracted: ${track.title}`);
-                                            return directUrl;
-                                        }
-                                        throw new Error('yt-dlp returned invalid URL');
-                                    } catch (execErr) {
-                                        console.warn('[BRIDGE] yt-dlp failed, using play-dl fallback:', execErr.message);
-                                        const streamRes = await play.stream(track.url, { discordPlayerCompatibility: true }).catch(() => null);
-                                        return streamRes ? streamRes.stream : null;
+                                        const streamData = await play.stream(track.url, { discordPlayerCompatibility: true });
+                                        return streamData.stream;
+                                    } catch (err) {
+                                        console.error('[BRIDGE FAIL]', err.message);
+                                        return null;
                                     }
                                 } catch (e) {
                                     console.error(`[BRIDGE FAIL] ${e.message}`);
