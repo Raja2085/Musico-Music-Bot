@@ -73,16 +73,11 @@ class MusicManager {
         if (this.player.extractors.size === 0) await this.init();
 
         try {
-            // Search with play-dl (fallback to yt-search if it fails)
+            // Search with yt-search first (more stable on Replit IPs)
             let youtubeResults = [];
             try {
-                youtubeResults = await play.search(query, {
-                    limit: 15,
-                    source: { youtube: 'video' }
-                });
-            } catch (searchError) {
-                const fallbackResults = await yts(query);
-                youtubeResults = fallbackResults.videos.slice(0, 15).map(v => ({
+                const searchRes = await yts(query);
+                youtubeResults = searchRes.videos.slice(0, 15).map(v => ({
                     title: v.title,
                     url: v.url,
                     link: v.url,
@@ -91,6 +86,16 @@ class MusicManager {
                     views: v.views,
                     channel: { name: v.author?.name || 'Unknown' }
                 }));
+            } catch (searchError) {
+                console.warn('[SEARCH] yt-search failed, trying play-dl fallback:', searchError.message);
+                try {
+                    youtubeResults = await play.search(query, {
+                        limit: 15,
+                        source: { youtube: 'video' }
+                    });
+                } catch (playDlError) {
+                    console.error('[SEARCH FAIL] Both providers failed:', playDlError.message);
+                }
             }
 
             if (!youtubeResults || !youtubeResults.length) {
