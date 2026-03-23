@@ -9,7 +9,14 @@ const path = require('path');
 class MusicManager {
     constructor(client) {
         this.client = client;
-        this.player = new Player(client);
+        this.player = new Player(client, {
+            skipFFmpeg: false
+        });
+        
+        // Detailed Debug Logging
+        if (process.env.DEBUG_BOT === 'true') {
+            this.player.on('debug', (msg) => console.log(`[PLAYER DEBUG] ${msg}`));
+        }
 
         // Register Player Events
         this.setupPlayerEvents();
@@ -60,12 +67,16 @@ class MusicManager {
         });
 
         this.player.events.on('playerError', (queue, error) => {
-            console.error(`[PLAYER ERROR] ${error.message}`);
+            console.error(`❌ [PLAYER ERROR] ${error.message}`);
             queue.metadata.send(`⚠️ **Playback Issue**: ${error.message}.`).catch(() => { });
         });
 
         this.player.events.on('error', (queue, error) => {
-            console.error(`[GENERAL ERROR] ${error.message}`);
+            console.error(`❌ [QUEUE ERROR] ${error.message}`);
+            // If it's an abort error, it's often network/voip related
+            if (error.message.includes('aborted')) {
+                console.warn('⚠️ [VOIP] Connection was aborted. This might be a network issue or missing Opus encoder.');
+            }
         });
     }
 
@@ -166,9 +177,12 @@ class MusicManager {
                         nodeOptions: {
                             metadata: interaction.channel,
                             selfDeaf: true,
+                            selfMute: false,
                             volume: 100,
                             leaveOnEmpty: true,
                             leaveOnEnd: true,
+                            bufferingTimeout: 5000,
+                            connectionTimeout: 60000, // Very long timeout for unstable networks
                             // OPTIMIZED LOCAL BRIDGE
                             onBeforeCreateStream: async (track) => {
                                 try {
@@ -190,8 +204,8 @@ class MusicManager {
                                         throw new Error('yt-dlp returned invalid URL');
                                     } catch (execErr) {
                                         console.warn('[BRIDGE] yt-dlp failed, using play-dl fallback:', execErr.message);
-                                        const stream = await play.stream(track.url, { discordPlayerCompatibility: true });
-                                        return stream.stream;
+                                        const streamRes = await play.stream(track.url, { discordPlayerCompatibility: true }).catch(() => null);
+                                        return streamRes ? streamRes.stream : null;
                                     }
                                 } catch (e) {
                                     console.error(`[BRIDGE FAIL] ${e.message}`);
