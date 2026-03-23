@@ -181,14 +181,29 @@ class MusicManager {
                             volume: 100,
                             leaveOnEmpty: true,
                             leaveOnEnd: true,
-                            bufferingTimeout: 5000,
-                            connectionTimeout: 60000, // Very long timeout for unstable networks
+                            bufferingTimeout: 10000,
+                            connectionTimeout: 120000, // 2 minute timeout for slow networks
                             // OPTIMIZED LOCAL BRIDGE
                             onBeforeCreateStream: async (track) => {
                                 try {
                                     if (!track.url || track.url === 'undefined') return null;
 
                                     const isWindows = process.platform === 'win32';
+                                    
+                                    // On Local Windows, use play-dl directly for more stability
+                                    if (isWindows) {
+                                        try {
+                                            const streamData = await play.stream(track.url, { 
+                                                discordPlayerCompatibility: true,
+                                                quality: 1
+                                            });
+                                            console.log(`[LOCAL] Streamed via play-dl: ${track.title}`);
+                                            return streamData.stream;
+                                        } catch (streamErr) {
+                                            console.warn('[LOCAL FAIL] play-dl stream failed, using yt-dlp fallback:', streamErr.message);
+                                        }
+                                    }
+
                                     const ytDlpPath = isWindows ? path.join(process.cwd(), 'yt-dlp.exe') : 'yt-dlp';
 
                                     const command = isWindows

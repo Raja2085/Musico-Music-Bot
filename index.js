@@ -8,7 +8,8 @@ const path = require('path');
 try {
     const ffmpegPath = require('ffmpeg-static');
     const ffmpegDir = path.dirname(ffmpegPath);
-    process.env.PATH = `${ffmpegDir}${path.delimiter}${process.env.PATH}`;
+    process.env.FFMPEG_PATH = ffmpegPath; // For discord-player and others
+    process.env.PATH = `${ffmpegDir}${path.delimiter}${process.env.PATH}`; // For command-line libraries
 } catch (e) {
     console.warn('⚠️ Could not find ffmpeg-static');
 }
