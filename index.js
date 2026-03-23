@@ -1,7 +1,7 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, Events, MessageFlags } = require('discord.js');
 const MusicManager = require('./MusicManager');
-const net = require('net');
+const http = require('http');
 const path = require('path');
 
 // --- FFMPEG DYNAMIC PATH ---
@@ -21,9 +21,12 @@ process.on('unhandledRejection', (reason, promise) => {
     console.error('🔥 [UNHANDLED REJECTION]', reason);
 });
 
-// --- SINGLE INSTANCE LOCK ---
-const LOCK_PORT = 9999;
-const server = net.createServer();
+// --- SINGLE INSTANCE LOCK & HEALTH CHECK ---
+const LOCK_PORT = process.env.PORT || 9999;
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('OK - Bot is healthy');
+});
 
 server.once('error', (err) => {
     if (err.code === 'EADDRINUSE') {
@@ -34,8 +37,8 @@ server.once('error', (err) => {
     }
 });
 
-server.listen(LOCK_PORT, () => {
-    console.log(`🔒 [INSTANCE LOCK] Secured on port ${LOCK_PORT}`);
+server.listen(LOCK_PORT, '0.0.0.0', () => {
+    console.log(`🔒 [HEALTH CHECK] Secured on port ${LOCK_PORT}`);
 });
 
 const client = new Client({
